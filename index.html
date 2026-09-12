@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TZOFEH — Scout Dashboard</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#0a0e12;color:#dce6ee;min-height:100vh}
+header{background:#0e151c;border-bottom:1px solid #1c2831;padding:16px 24px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:5}
+.logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#16a34a,#65a30d);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px}
+h1{font-size:19px;margin:0}h1 small{color:#7d93a5;font-size:10px;display:block;letter-spacing:2px}
+.hud{margin-left:auto;display:flex;gap:16px;font-size:12px;color:#7d93a5;font-family:ui-monospace,monospace}
+.hud b{color:#a7f3a0}
+.wrap{max-width:1140px;margin:0 auto;padding:22px;display:grid;grid-template-columns:1fr 400px;gap:18px;align-items:start}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}}
+.card{background:#0e151c;border:1px solid #1c2831;border-radius:13px;padding:16px}
+.card h2{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#7d93a5;display:flex;justify-content:space-between}
+canvas#map{width:100%;height:440px;background:#0a1116;border:1px solid #1c2831;border-radius:10px;display:block;touch-action:none;cursor:crosshair}
+.mapbar{display:flex;gap:10px;margin-top:10px;align-items:center;font-size:12px;color:#7d93a5;flex-wrap:wrap}
+.mapbar b{color:#a7f3a0;font-family:ui-monospace,monospace}
+legend{display:flex;gap:12px;font-size:11px;color:#7d93a5;margin-top:10px;flex-wrap:wrap}
+.leg{display:flex;align-items:center;gap:5px}
+.leg i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.field{display:flex;gap:8px;margin-bottom:8px;align-items:center}
+.field label{width:64px;font-size:11px;color:#7d93a5;text-transform:uppercase}
+.field input,.field select{flex:1;background:#0a1014;border:1px solid #1c2831;border-radius:8px;color:#dce6ee;padding:8px 10px;font-size:12px}
+.field input:focus,.field select:focus{outline:none;border-color:#65a30d}
+button{background:#141d26;border:1px solid #24323f;color:#dce6ee;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;font-weight:600}
+button:hover{border-color:#65a30d;background:#1a2530}
+button.go{background:linear-gradient(135deg,#166534,#65a30d);border-color:#65a30d;color:#fff;width:100%;margin-top:4px}
+.log{max-height:300px;overflow:auto;font-size:12px}
+.log .e{padding:8px 0;border-bottom:1px solid #141d26;display:flex;gap:10px;align-items:flex-start}
+.log time{color:#5a6f81;font-family:ui-monospace;font-size:11px;white-space:nowrap}
+.log .lbl{color:#a7f3a0;font-weight:700}
+.log .wt{color:#f2c94c}
+.log .note{color:#8aa2b5}
+.wp{font-size:10px;color:#7d93a5;font-family:ui-monospace;margin-top:4px}
+.empty{color:#5a6f81;text-align:center;padding:20px;font-size:12px;border:1px dashed #1c2831;border-radius:9px}
+.rem{background:none;border:none;color:#5a6f81;cursor:pointer;font-size:13px;margin-left:auto;padding:2px 6px}
+.rem:hover{color:#f87171}
+</style></head>
+<body>
+<header><div class="logo">△</div><h1>TZOFEH<small>SCOUT DASHBOARD</small></h1>
+<div class="hud"><span>grid <b id="hudGrid">—</b></span><span>wp <b id="hudWp">0</b></span><span>log <b id="hudLog">0</b></span></div></header>
+<div class="wrap">
+<div class="card">
+<h2>Ops Map<span class="hidden" style="font-weight:400">click to mark waypoint</span></h2>
+<canvas id="map"></canvas>
+<div class="mapbar">
+<span>points: <b id="pt">—</b></span>
+<span>dist: <b id="dist">0.0</b> km</span>
+<button id="clearMapBtn">Clear Points</button>
+</div>
+<legend><span class="leg"><i style="background:#65a30d"></i> waypoint</span>
+<span class="leg"><i style="background:#f2c94c"></i> sighting</span>
+<span class="leg"><i style="background:#f87171"></i> danger</span></legend>
+</div>
+<div>
+<div class="card">
+<h2>New Sighting</h2>
+<div class="field"><label>Type</label>
+<select id="type"><option>Waypoint</option><option>Contact</option><option>Supply cache</option><option>Trail marker</option><option>Danger</option></select></div>
+<div class="field"><label>Grid</label><input id="gridRef" placeholder="e.g. FJ-17-42 or click map"></div>
+<div class="field"><label>Notes</label><input id="notes" placeholder="description…"></div>
+<div class="field"><label>Flag</label>
+<select id="flag"><option value="0" style="color:#a7f3a0">routine</option><option value="1" style="color:#f2c94c">watch</option><option value="2" style="color:#f87171">critical</option></select></div>
+<button class="go" id="logBtn">Log Sighting</button>
+</div>
+<div class="card">
+<h2>Scouting Log</h2>
+<div class="log" id="log"><div class="empty">No sightings logged yet.</div></div>
+</div>
+</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const KEY='tz_data';
+const store=()=>{try{return JSON.parse(localStorage.getItem(KEY))||{wp:[],log:[]}}catch{return{wp:[],log:[]}}};
+const save=()=>localStorage.setItem(KEY,JSON.stringify(data));
+let data=store();
+if(!data.log.length)data.log=[{t:Date.now()-(3*3600e3),g:'FJ-12',tp:'Trail marker',n:'Spoor track leading NE off ridge.',fl:0}];
+const cv=$('map'),ctx=cv.getContext('2d');
+const WGridP=[5650,2100]; const KMX=26,KMY=12;
+const P={0:'#65a30d',1:'#f2c94c',2:'#f87171'};
+const PS={0:'Waypoint',1:'Sighting',2:'Danger'};
+
+function latlng(x,y){return{Wx:x/380*40-20,Sy:y/330*30-15};}
+
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+function draw(){
+  const dpr=devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;
+  cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#0a1116';ctx.fillRect(0,0,W,H);
+  // grid
+  ctx.strokeStyle='#16222c';ctx.lineWidth=1;
+  for(let x=0;x<=W;x+=38)for(let y=0;y<=H;y+=33){ctx.strokeRect(x,y,38,33);}
+  // topo rings
+  ctx.strokeStyle='#12202c';
+  [[0.5,0.5,0.45],[0.75,0.4,0.3],[0.3,0.7,0.35]].forEach(([px,py,r])=>{
+    ctx.beginPath();ctx.arc(px*W,py*H,r*Math.min(W,H)*0.55,0,Math.PI*2);ctx.stroke();
+  });
+  // cells labels
+  ctx.fillStyle='#223545';ctx.font='9px ui-monospace';ctx.textAlign='center';
+  for(let gx=0;gx<8;gx++)for(let gy=0;gy<7;gy++){
+    ctx.fillText(String.fromCharCode(65+gx)+gy,gx*38+19,gy*33+18);
+  }
+  // waypoints
+  data.wp.forEach((p,i)=>{
+    ctx.beginPath();ctx.arc(p.x,p.y,6,0,Math.PI*2);ctx.fillStyle=P[p.fl];ctx.fill();
+    ctx.strokeStyle='#dce6ee';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle=P[p.fl];ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#8aa2b5';ctx.font='10px system-ui';ctx.fillText(p.n?p.n.slice(0,12):p.g, p.x, p.y-9);
+  });
+  if(data.wp.length>1){
+    ctx.strokeStyle='#65a30d88';ctx.lineWidth=2;ctx.setLineDash([5,5]);ctx.beginPath();
+    data.wp.forEach((p,i)=>{i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);});
+    ctx.stroke();ctx.setLineDash([]);
+  }
+  const last=data.wp[data.wp.length-1];
+  if(last){
+    ctx.fillStyle='#a7f3a0';ctx.shadowColor='#65a30d';ctx.shadowBlur=12;
+    ctx.beginPath();ctx.arc(last.x,last.y,8,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0;
+  }
+  $('hudWp').textContent=data.wp.length;
+}
+function distKm(){let d=0;if(data.wp.length>1){for(let i=1;i<data.wp.length;i++){d+=Math.hypot((data.wp[i].x-data.wp[i-1].x),(data.wp[i].y-data.wp[i-1].y));}}
+  return (d/380*40/2.6).toFixed(1);}
+function syncHud(){
+  $('pt').textContent=data.wp.length?data.wp[data.wp.length-1].g:'—';
+  $('dist').textContent=distKm();
+  $('hudGrid').textContent=data.wp.length?data.wp[data.wp.length-1].g:'—';
+  $('hudLog').textContent=data.log.length;
+}
+function gridFrom(x,y){
+  const gx=Math.floor(x/38),gy=Math.floor(y/33);
+  const sx=String.fromCharCode(65+gx),sy=gy;
+  const ex=Math.floor(x%38/38*10),eyx=Math.floor(y%33/33*10);
+  return sx+sy+'-'+ex+'-'+eyx;
+}
+cv.addEventListener('click',e=>{
+  const r=cv.getBoundingClientRect();
+  const x=Math.min(Math.max(1,(e.clientX-r.left)*(cv.clientWidth/r.width)),cv.clientWidth-1);
+  const y=Math.min(Math.max(1,(e.clientY-r.top)*(cv.clientHeight/r.height)),cv.clientHeight-1);
+  const g=gridFrom(x,y);
+  data.wp.push({x,y,g,fl:0,n:$('notes').value.trim()||g,tp:'Waypoint'});
+  $('gridRef').value=g;
+  const d=latlng(x,y);data.log.unshift({t:Date.now(),g,tp:'Waypoint',n:'Manual plot '+g+' @ '+d.Wx.toFixed(2)+'N '+d.Sy.toFixed(2)+'E',fl:0});
+  save();draw();syncHud();renderLog();
+});
+$('clearMapBtn').onclick=()=>{if(confirm('Clear waypoints?')){data.wp=[];save();draw();syncHud();}};
+
+function renderLog(){
+  const box=$('log');
+  if(!data.log.length){box.innerHTML='<div class="empty">No sightings logged yet.</div>';return;}
+  box.innerHTML=data.log.map(e=>`<div class="e">
+<time>${new Date(e.t).toLocaleTimeString('en-GB',{hour12:false})}</time>
+<div><div><span class="lbl">${esc(e.tp)}</span> <span class="wt">${esc(e.g)}</span></div>
+${e.n?`<div class="note">${esc(e.n)}</div>`:''}<div class="wp">flag=${e.fl===0?'routine':e.fl===1?'watch':'critical'}</div></div>
+<button class="rem" data-i="${data.log.indexOf(e)}" title="remove">✕</button>
+</div>`).join('');
+}
+$('logBtn').onclick=()=>{
+  const g=$('gridRef').value.trim()||('MANUAL-'+Math.floor(Math.random()*90));
+  const n=$('notes').value.trim();
+  const tp=$('type').value;
+  const fl=+$('flag').value;
+  data.log.unshift({t:Date.now(),g,tp,n,fl});
+  data.wp.push({x:38*(g.charCodeAt(0)%8)+10,y:40+(data.wp.length*26)%220,g,fl,tp,n});
+  save();$('notes').value='';renderLog();draw();syncHud();
+};
+$('log').addEventListener('click',e=>{
+  const r=e.target.closest('.rem');if(r){data.log.splice(+r.dataset.i,1);save();renderLog();$('hudLog').textContent=data.log.length;}
+});
+window.addEventListener('resize',draw);
+draw();syncHud();renderLog();
+</script>
+</body></html>
